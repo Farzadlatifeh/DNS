@@ -267,6 +267,14 @@ def main():
         for i, profile in enumerate(dns_data[key], 1):
             profile['profile_number'] = i
     
+    # Deduplicate profiles by IP addresses and shorten names
+    dns_data = deduplicate_and_shorten_names(dns_data)
+    
+    # Re-number again after deduplication
+    for key in ['ipv4_profiles', 'ipv6_profiles', 'dns64_profiles']:
+        for i, profile in enumerate(dns_data[key], 1):
+            profile['profile_number'] = i
+    
     # Save to JSON file
     output_file = 'dns_profiles.json'
     with open(output_file, 'w', encoding='utf-8') as f:
@@ -276,6 +284,52 @@ def main():
     print(f"Total IPv4 profiles: {len(dns_data['ipv4_profiles'])}")
     print(f"Total IPv6 profiles: {len(dns_data['ipv6_profiles'])}")
     print(f"Total DNS64 profiles: {len(dns_data['dns64_profiles'])}")
+
+
+def shorten_name(name, is_dns64=False):
+    """Shorten profile names to be concise."""
+    # Remove common verbose patterns
+    name = name.replace(' Public DNS', '')
+    name = name.replace(' DNS', '')
+    name = name.replace('-', '')
+    name = name.replace('/', '')
+    name = name.replace(' ', '')
+    
+    # Add DNS64 suffix if needed
+    if is_dns64 and not name.endswith('64'):
+        name = name + '64'
+    
+    return name[:50]
+
+
+def deduplicate_and_shorten_names(dns_data):
+    """Remove duplicate profiles with same IPs and shorten names."""
+    result = {
+        'ipv4_profiles': [],
+        'ipv6_profiles': [],
+        'dns64_profiles': []
+    }
+    
+    for category in ['ipv4_profiles', 'ipv6_profiles', 'dns64_profiles']:
+        seen_ips = set()
+        is_dns64 = category == 'dns64_profiles'
+        
+        for profile in dns_data[category]:
+            # Create a key from the IP addresses
+            ip_key = (profile.get('primary'), profile.get('secondary'))
+            
+            # Skip if we've already seen this IP combination
+            if ip_key in seen_ips:
+                continue
+            
+            seen_ips.add(ip_key)
+            
+            # Shorten the profile name
+            profile['profile_name'] = shorten_name(profile['profile_name'], is_dns64)
+            
+            result[category].append(profile)
+    
+    return result
 
 
 if __name__ == '__main__':

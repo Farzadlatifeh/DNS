@@ -277,20 +277,20 @@
     {
       "profile_number": 3,
       "profile_name": "Google Public DNS DNS64",
-      "primary": "2001:4860:4860::",
-      "secondary": null
+      "primary": "2001:4860:4860::64",
+      "secondary": "2001:4860:4860::6464"
     },
     {
       "profile_number": 4,
       "profile_name": "Cloudflare-DNS DNS64",
-      "primary": "2606:4700:4700::",
-      "secondary": null
+      "primary": "2606:4700:4700::64",
+      "secondary": "2606:4700:4700::6400"
     },
     {
       "profile_number": 5,
       "profile_name": "TREX DNS64",
-      "primary": "2001:67c:2b0::",
-      "secondary": null
+      "primary": "2001:67c:2b0::4",
+      "secondary": "2001:67c:2b0::6"
     }
   ]
 }

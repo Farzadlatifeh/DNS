@@ -1,0 +1,1 @@
+Nothing should be ignored based on the provided file changes. The added files (`dns_profiles.json` and `extract_dns.py`) are source/config files that should be tracked in version control.

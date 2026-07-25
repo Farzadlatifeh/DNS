@@ -104,8 +104,11 @@ def parse_dns64_table(content):
         if not org or ':' not in ipv6 or len(ipv6) < 4:
             continue
         
-        # Additional validation for IPv6 addresses
+        # Additional validation for IPv6 addresses (allow :: compression)
         if not re.match(r'^[0-9a-fA-F:]+$', ipv6):
+            continue
+        # Ensure it's a valid IPv6 pattern (at least has proper structure)
+        if not re.match(r'^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$', ipv6):
             continue
             
         if org not in org_data:
@@ -164,6 +167,9 @@ def extract_all_dns_data(content):
     # Parse DNS64 table
     dns64_table_data = parse_dns64_table(content)
     
+    # Track which orgs have been processed from the DNS64 table
+    dns64_orgs_processed = set()
+    
     for org, data in dns64_table_data.items():
         ipv6_unique = list(dict.fromkeys(data['ipv6']))
         
@@ -176,6 +182,7 @@ def extract_all_dns_data(content):
             }
             result['dns64_profiles'].append(profile)
             profile_num += 1
+            dns64_orgs_processed.add(org.lower())
     
     # Parse detailed sections for additional organizations not in tables
     detailed_sections = re.findall(r'## (.*?) \[AS\d+\]:([\s\S]*?)(?=## |\Z)', content)
@@ -187,6 +194,9 @@ def extract_all_dns_data(content):
         # Skip if already processed (case-insensitive comparison)
         if org_name.lower() in processed_orgs:
             continue
+        
+        # Skip DNS64 extraction if org already processed from DNS64 table
+        skip_dns64 = org_name.lower() in dns64_orgs_processed
         
         # Extract IPv4 addresses from pairs (IPv4/IPv6 format)
         ipv4_addrs = re.findall(r'(\d{1,3}(?:\.\d{1,3}){3})/', section_content)
@@ -203,7 +213,8 @@ def extract_all_dns_data(content):
         dns64_match = re.search(r'DNS64:\s*\n([\s\S]*?)(?=\n##|\n\n[A-Z]|\Z)', section_content)
         if dns64_match:
             dns64_section = dns64_match.group(1)
-            dns64_ips = re.findall(r'([0-9a-fA-F:]{4,}:)', dns64_section)
+            # Match full IPv6 addresses (including :: compression) followed by space or parenthesis
+            dns64_ips = re.findall(r'([0-9a-fA-F]+(?::[0-9a-fA-F]*){2,}::[0-9a-fA-F]*)', dns64_section)
         
         # Deduplicate and limit to 2
         ipv4_unique = list(dict.fromkeys(ipv4_addrs))[:2]
@@ -230,7 +241,7 @@ def extract_all_dns_data(content):
             result['ipv6_profiles'].append(profile)
             profile_num += 1
         
-        if dns64_unique:
+        if dns64_unique and not skip_dns64:
             profile = {
                 'profile_number': profile_num,
                 'profile_name': f"{org_name} DNS64"[:50],

@@ -22,10 +22,14 @@ venv/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Local configuration
+.env
+.env.local
+*.env
+*.env.*
 ```
 
-Wait, let me reconsider. The changes only include `dns_profiles.json` and `extract_dns.py` which are source/config files, not build artifacts or dependencies. Following rule #6, since there are no build artifacts, dependencies, or temp files in the change list, the output should be empty.
+Wait, let me reconsider. The file changes only include `dns_profiles.json` and `extract_dns.py`, which are both source/config files. There are no build artifacts, dependencies, or temp files in the change list.
 
-```gitignore
-
-```
+(empty)

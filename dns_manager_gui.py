@@ -74,12 +74,13 @@ class PingWorker(QThread):
         try:
             # Use Windows ping command for accurate ICMP ping
             if ':' in self.ip_address:
-                # IPv6 address
+                # IPv6 address - use ping -6 explicitly
                 result = subprocess.run(
-                    ['ping', '-n', '1', '-w', str(self.timeout * 1000), self.ip_address],
+                    ['ping', '-6', '-n', '1', '-w', str(self.timeout * 1000), self.ip_address],
                     capture_output=True,
                     text=True,
-                    timeout=self.timeout + 2
+                    timeout=self.timeout + 2,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
                 )
             else:
                 # IPv4 address
@@ -87,20 +88,25 @@ class PingWorker(QThread):
                     ['ping', '-n', '1', '-w', str(self.timeout * 1000), self.ip_address],
                     capture_output=True,
                     text=True,
-                    timeout=self.timeout + 2
+                    timeout=self.timeout + 2,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
                 )
             
             if result.returncode == 0:
                 # Parse ping time from output
                 output = result.stdout
                 import re
+                # Match both "time=Xms" and "time<Xms" formats
                 match = re.search(r'time[=<](\d+)ms', output, re.IGNORECASE)
                 if match:
                     ping_ms = int(match.group(1))
                     self.ping_result.emit(self.profile_name, self.ip_address, ping_ms)
                 else:
-                    # Fallback: estimate from execution time
-                    self.ping_result.emit(self.profile_name, self.ip_address, 50)
+                    # Fallback: check if ping succeeded but couldn't parse time
+                    if 'Reply from' in output or 'von' in output.lower():
+                        self.ping_result.emit(self.profile_name, self.ip_address, 50)
+                    else:
+                        self.ping_result.emit(self.profile_name, self.ip_address, -1)
             else:
                 self.ping_result.emit(self.profile_name, self.ip_address, -1)
         except Exception as e:
@@ -213,8 +219,13 @@ class DNSTile(QFrame):
     
     def on_apply_clicked(self):
         """Handle apply button click."""
-        if hasattr(self.parent().parent(), 'apply_dns_profile'):
-            self.parent().parent().apply_dns_profile(self.profile, self.dns_type)
+        # Navigate up the parent chain to find the main window
+        parent = self.parent()
+        while parent:
+            if isinstance(parent, DNSManagerGUI):
+                parent.apply_dns_profile(self.profile, self.dns_type)
+                return
+            parent = parent.parent()
 
 
 class DNSManagerGUI(QMainWindow):
@@ -508,10 +519,10 @@ class DNSManagerGUI(QMainWindow):
             if item and item.widget():
                 tile = item.widget()
                 if isinstance(tile, DNSTile):
-                    if (tile.profile.get('primary') == ip or 
-                        tile.profile.get('secondary') == ip):
+                    # Match by profile name to ensure we update the correct tile
+                    if tile.profile.get('profile_name') == profile_name:
                         tile.update_ping(ip, ping_ms)
-                        break
+                        return
     
     def refresh_current_dns(self):
         """Refresh the current DNS status from the system."""

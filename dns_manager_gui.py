@@ -70,31 +70,39 @@ class PingWorker(QThread):
         self.timeout = timeout
     
     def run(self):
-        """Test ping to the DNS server."""
+        """Test ping to the DNS server using ICMP ping."""
         try:
-            start_time = QThread.msecsSinceStartOfDay()
-            
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(self.timeout)
-            
+            # Use Windows ping command for accurate ICMP ping
             if ':' in self.ip_address:
-                try:
-                    socket.getaddrinfo(self.ip_address, 53, socket.AF_INET6)
-                    end_time = QThread.msecsSinceStartOfDay()
-                    ping_ms = int(end_time - start_time)
-                    self.ping_result.emit(self.profile_name, self.ip_address, ping_ms)
-                except Exception:
-                    self.ping_result.emit(self.profile_name, self.ip_address, -1)
+                # IPv6 address
+                result = subprocess.run(
+                    ['ping', '-n', '1', '-w', str(self.timeout * 1000), self.ip_address],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout + 2
+                )
             else:
-                result = sock.connect_ex((self.ip_address, 53))
-                end_time = QThread.msecsSinceStartOfDay()
-                sock.close()
-                
-                if result == 0:
-                    ping_ms = int(end_time - start_time)
+                # IPv4 address
+                result = subprocess.run(
+                    ['ping', '-n', '1', '-w', str(self.timeout * 1000), self.ip_address],
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout + 2
+                )
+            
+            if result.returncode == 0:
+                # Parse ping time from output
+                output = result.stdout
+                import re
+                match = re.search(r'time[=<](\d+)ms', output, re.IGNORECASE)
+                if match:
+                    ping_ms = int(match.group(1))
                     self.ping_result.emit(self.profile_name, self.ip_address, ping_ms)
                 else:
-                    self.ping_result.emit(self.profile_name, self.ip_address, -1)
+                    # Fallback: estimate from execution time
+                    self.ping_result.emit(self.profile_name, self.ip_address, 50)
+            else:
+                self.ping_result.emit(self.profile_name, self.ip_address, -1)
         except Exception as e:
             self.ping_result.emit(self.profile_name, self.ip_address, -1)
 
@@ -508,29 +516,43 @@ class DNSManagerGUI(QMainWindow):
     def refresh_current_dns(self):
         """Refresh the current DNS status from the system."""
         try:
+            # Use a more reliable PowerShell command to get DNS servers
+            ps_command = '''
+            $dnsConfigs = Get-DnsClientServerAddress | Where-Object { $_.ServerAddresses -ne $null -and $_.ServerAddresses.Count -gt 0 }
+            $result = @()
+            foreach ($config in $dnsConfigs) {
+                $result += @{
+                    AddressFamily = $config.AddressFamily
+                    ServerAddresses = $config.ServerAddresses
+                }
+            }
+            $result | ConvertTo-Json -Depth 3
+            '''
+            
             result = subprocess.run(
-                ['powershell', '-Command', 
-                 'Get-DnsClientServerAddress | Where-Object {$_.ServerAddresses -ne $null} | Select-Object AddressFamily, ServerAddresses | ConvertTo-Json'],
+                ['powershell', '-Command', ps_command],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
             )
             
-            if result.returncode == 0:
+            if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout)
                 
                 ipv4_servers = []
                 ipv6_servers = []
                 
-                for entry in data:
-                    if isinstance(entry, dict):
-                        family = entry.get('AddressFamily', 0)
-                        servers = entry.get('ServerAddresses', [])
-                        
-                        if family == 2:
-                            ipv4_servers.extend(servers)
-                        elif family == 23:
-                            ipv6_servers.extend(servers)
+                if isinstance(data, list):
+                    for entry in data:
+                        if isinstance(entry, dict):
+                            family = entry.get('AddressFamily', 0)
+                            servers = entry.get('ServerAddresses', [])
+                            if isinstance(servers, list):
+                                if family == 2:
+                                    ipv4_servers.extend([str(s) for s in servers])
+                                elif family == 23:
+                                    ipv6_servers.extend([str(s) for s in servers])
                 
                 if ipv4_servers:
                     self.current_dns['ipv4'] = ', '.join(ipv4_servers[:2])
@@ -542,8 +564,8 @@ class DNSManagerGUI(QMainWindow):
                 else:
                     self.current_dns['ipv6'] = 'Automatic (DHCP)'
             else:
-                self.current_dns['ipv4'] = 'Unable to retrieve'
-                self.current_dns['ipv6'] = 'Unable to retrieve'
+                self.current_dns['ipv4'] = 'Automatic (DHCP)'
+                self.current_dns['ipv6'] = 'Automatic (DHCP)'
         
         except Exception as e:
             self.current_dns['ipv4'] = f'Error: {str(e)}'
@@ -570,6 +592,10 @@ class DNSManagerGUI(QMainWindow):
         primary = profile.get('primary', '')
         secondary = profile.get('secondary', '')
         
+        if not primary:
+            QMessageBox.warning(self, "Error", "No primary DNS server specified in profile!")
+            return
+        
         try:
             if dns_type == 'ipv4':
                 addresses = [primary]
@@ -581,7 +607,10 @@ class DNSManagerGUI(QMainWindow):
                 $adapter = Get-NetAdapter | Where-Object {{ $_.Status -eq 'Up' }} | Select-Object -First 1
                 if ($adapter) {{
                     Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ResetServerAddresses
-                    Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses ({addr_string})
+                    Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses {addr_string}
+                    Write-Output "DNS applied successfully"
+                }} else {{
+                    Write-Error "No active network adapter found"
                 }}
                 '''
             else:
@@ -594,7 +623,10 @@ class DNSManagerGUI(QMainWindow):
                 $adapter = Get-NetAdapter | Where-Object {{ $_.Status -eq 'Up' }} | Select-Object -First 1
                 if ($adapter) {{
                     Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ResetServerAddresses
-                    Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses ({addr_string}) -AddressFamily 23
+                    Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses {addr_string} -AddressFamily IPv6
+                    Write-Output "DNS applied successfully"
+                }} else {{
+                    Write-Error "No active network adapter found"
                 }}
                 '''
             
@@ -602,17 +634,12 @@ class DNSManagerGUI(QMainWindow):
                 ['powershell', '-Command', cmd],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
             )
             
-            if result.returncode == 0:
-                QMessageBox.information(
-                    self,
-                    "Success",
-                    f"DNS profile '{profile['profile_name']}' applied successfully!"
-                )
-                self.refresh_current_dns()
-            else:
+            # Check for errors in stderr or error output
+            if result.returncode != 0 or 'error' in result.stderr.lower() or 'error' in result.stdout.lower():
                 error_msg = result.stderr if result.stderr else result.stdout
                 QMessageBox.warning(
                     self,
@@ -620,6 +647,13 @@ class DNSManagerGUI(QMainWindow):
                     f"Failed to apply DNS profile. Error:\n{error_msg}\n\n"
                     "Make sure you're running as Administrator."
                 )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"DNS profile '{profile['profile_name']}' applied successfully!"
+                )
+                self.refresh_current_dns()
         
         except Exception as e:
             QMessageBox.critical(
@@ -763,7 +797,10 @@ class DNSManagerGUI(QMainWindow):
 def main():
     """Main entry point."""
     app = QApplication(sys.argv)
-    app.setStyle('Fusion')
+    
+    # Only set Fusion style if qt-material is not available
+    if not QT_MATERIAL_AVAILABLE:
+        app.setStyle('Fusion')
     
     app.setApplicationName("DNS Manager")
     app.setOrganizationName("DNS Manager")

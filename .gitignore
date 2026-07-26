@@ -1,51 +1,77 @@
-```gitignore
-# Compiled and binary files
-*.pyc
-*.class
-*.o
-*.exe
-*.dll
-*.so
-*.a
-*.obj
-*.out
-
-# Dependencies
-__pycache__/
-.mypy_cache/
-.pytest_cache/
-venv/
-.venv/
-node_modules/
-dist/
-build/
-target/
-.gradle/
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
-
-# Environment
+```
+# Environment files
 .env
 .env.local
 *.env.*
 
-# Editors
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Editor/IDE files
 .vscode/
 .idea/
 
-# System files
-.DS_Store
-Thumbs.db
-
-# Coverage
+# Dependencies and build artifacts
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.class
+*.o
+*.obj
+dist/
+build/
+target/
+.venv/
+venv/
+.envrc
+.env.local
+*.env.*
+.coverage
 coverage/
 htmlcov/
-.coverage
-
+.mypy_cache/
+.pytest_cache/
+.nyc_output/
+coverage/lcov.info
+*.gcda
+*.gcno
+*.gcov
+*.profdata
+*.dynstr
+*.dynsym
+*.strtab
+*.symtab
+*.note.gnu.build-id
+*.dwo
+*.dwp
+*.dwz
+*.map
+*.pdb
+*.idb
+*.ilk
+*.exp
+*.lib
+*.a
+*.so.*
+*.dylib.*
+*.dll.*
+*.exe.*
+*.out.*
+*.class.*
+*.o.*
+*.obj.*
+*.pyc.*
+*.pyo.*
+*.pyd.*
 # Compressed files
 *.zip
 *.gz
@@ -69,4 +95,7 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+# System files
+.DS_Store
+Thumbs.db
 ```

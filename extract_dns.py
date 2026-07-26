@@ -128,6 +128,15 @@ def extract_all_dns_data(content):
         'dns64_profiles': []
     }
     
+    # Add constant Shecan DNS entry
+    shecan_profile = {
+        'profile_number': 0,
+        'profile_name': 'Shecan',
+        'primary': '178.22.122.100',
+        'secondary': '185.51.200.2'
+    }
+    result['ipv4_profiles'].append(shecan_profile)
+    
     # Track processed organizations to avoid duplicates
     processed_orgs = set()
     

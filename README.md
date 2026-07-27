@@ -212,6 +212,7 @@ This project is provided as-is for educational and personal use.
 - DNS profile data sourced from [public-dns.info](https://public-dns.info/) and community-maintained lists
 - Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/)
 - Theme support by [qt-material](https://github.com/UN-GCPDS/qt-material)
+- Special thanks to the comprehensive list of [Top Public Recursive Name Servers](https://gist.githubusercontent.com/mutin-sa/5dcbd35ee436eb629db7872581093bc5/raw/e69d04151312208dc023c124ebdda22832db4325/Top_Public_Recursive_Name_Servers.md)
 
 ## Support
 

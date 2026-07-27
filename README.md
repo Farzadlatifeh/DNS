@@ -1,6 +1,6 @@
-# DNS Manager - Windows 11
+# DNS Shecan Manager - Windows 11
 
-A modern PyQt6 GUI application for managing DNS profiles on Windows 11. This tool allows you to easily view, test, and apply DNS server configurations from various providers worldwide.
+A modern PyQt6 GUI application for managing DNS profiles on Windows 11, with special focus on **Shecan DNS** and other global DNS providers. This tool allows you to easily view, test, and apply DNS server configurations from various providers worldwide.
 
 ![DNS Manager](https://img.shields.io/badge/Platform-Windows%2011-blue)
 ![Python](https://img.shields.io/badge/Python-3.8+-green)
@@ -9,7 +9,7 @@ A modern PyQt6 GUI application for managing DNS profiles on Windows 11. This too
 ## Features
 
 - 📊 **Real-time DNS Status** - Display current IPv4 and IPv6 DNS settings
-- 🌍 **Multiple DNS Providers** - Pre-configured profiles from Google, Cloudflare, Quad9, Cisco, Yandex, and more
+- 🌍 **Multiple DNS Providers** - Pre-configured profiles including **Shecan**, Google, Cloudflare, Quad9, Cisco, Yandex, and more
 - 🏓 **Ping Testing** - Test latency for each DNS server in separate threads
 - 🎨 **Modern UI** - Beautiful dark theme with color-coded tiles
 - ⚡ **Quick Apply** - One-click DNS profile application
@@ -19,7 +19,7 @@ A modern PyQt6 GUI application for managing DNS profiles on Windows 11. This too
 
 ## Supported DNS Types
 
-- **IPv4** - Traditional DNS servers (17+ profiles)
+- **IPv4** - Traditional DNS servers (17+ profiles including Shecan)
 - **IPv6** - Next-generation DNS servers (15+ profiles)
 - **DNS64** - NAT64 compatible DNS servers (3+ profiles)
 
@@ -27,6 +27,7 @@ A modern PyQt6 GUI application for managing DNS profiles on Windows 11. This too
 
 | Provider | IPv4 | IPv6 | DNS64 |
 |----------|------|------|-------|
+| **Shecan** | ✅ | ❌ | ❌ |
 | Google | ✅ | ✅ | ✅ |
 | Cloudflare/APNIC | ✅ | ✅ | ✅ |
 | Quad9 | ✅ | ✅ | ❌ |
@@ -116,10 +117,30 @@ The application displays ping quality with color indicators:
 dns-manager/
 ├── dns_manager_gui.py      # Main GUI application
 ├── extract_dns.py          # DNS profile extraction script
-├── dns_profiles.json       # DNS profiles database
+├── dns_profiles.json       # DNS profiles database (includes Shecan)
 ├── Run_DNS_tool.bat        # Windows launcher script
+├── dns_manager.spec        # PyInstaller spec file (builds DNS_Shecan.exe)
 └── README.md               # This file
 ```
+
+## Building Executable (Windows Only)
+
+To create a standalone Windows executable:
+
+```bash
+pip install pyinstaller
+pyinstaller --clean dns_manager.spec
+```
+
+This will create `DNS_Shecan.exe` in the `dist/` folder.
+
+### Release Package
+
+The built executable `DNS_Shecan.exe` is a standalone Windows application that:
+- Requires no Python installation
+- Includes all necessary dependencies
+- Bundles the DNS profiles database
+- Features a modern GUI for DNS management
 
 ## Configuration Files
 
@@ -209,6 +230,7 @@ This project is provided as-is for educational and personal use.
 
 ## Acknowledgments
 
+- **Shecan DNS** - Primary DNS provider featured in this tool (178.22.122.100, 185.51.200.2)
 - DNS profile data sourced from [public-dns.info](https://public-dns.info/) and community-maintained lists
 - Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/)
 - Theme support by [qt-material](https://github.com/UN-GCPDS/qt-material)

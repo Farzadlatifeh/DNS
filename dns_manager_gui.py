@@ -717,49 +717,83 @@ $result | ConvertTo-Json -Depth 3
             )
     
     def reload_profiles_from_script(self):
-        """Run extract_dns.py to reload profiles."""
-        script_path = Path(__file__).parent / "extract_dns.py"
-        
-        if not script_path.exists():
-            QMessageBox.critical(self, "Error", "extract_dns.py not found!")
-            return
+        """Run extract_dns.py to reload profiles without spawning new window."""
+        # Disable the reload button during execution to prevent multiple clicks
+        self.reload_button.setEnabled(False)
+        QApplication.processEvents()
         
         try:
-            result = subprocess.run(
-                [sys.executable, str(script_path)],
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
+            # Import extract_dns module functions directly instead of using subprocess
+            # This prevents spawning a new window when running as a frozen .exe
+            import importlib.util
             
-            if result.returncode == 0:
+            # Handle PyInstaller frozen executable correctly
+            if getattr(sys, 'frozen', False):
+                # Running as compiled .exe - look for extract_dns.py in _MEIPASS
+                if hasattr(sys, '_MEIPASS'):
+                    script_path = Path(sys._MEIPASS) / "extract_dns.py"
+                else:
+                    script_path = Path(sys.executable).parent / "extract_dns.py"
+            else:
+                # Running as normal Python script
+                script_path = Path(__file__).parent / "extract_dns.py"
+            
+            if not script_path.exists():
+                QMessageBox.critical(self, "Error", "extract_dns.py not found!")
+                return
+            
+            # Load the extract_dns module dynamically
+            spec = importlib.util.spec_from_file_location("extract_dns_module", str(script_path))
+            if spec is None or spec.loader is None:
+                QMessageBox.critical(self, "Error", "Failed to load extract_dns.py!")
+                return
+            
+            extract_dns_module = importlib.util.module_from_spec(spec)
+            
+            # Capture stdout from the module execution
+            import io
+            old_stdout = sys.stdout
+            sys.stdout = captured_output = io.StringIO()
+            
+            try:
+                # Execute the module
+                spec.loader.exec_module(extract_dns_module)
+                # Call the main function
+                extract_dns_module.main()
+                output_text = captured_output.getvalue()
+                success = True
+                error_text = ""
+            except Exception as e:
+                output_text = ""
+                error_text = str(e)
+                success = False
+            finally:
+                sys.stdout = old_stdout
+            
+            if success:
                 QMessageBox.information(
                     self,
                     "Success",
-                    "Profiles reloaded successfully!\n\n" + result.stdout
+                    "Profiles reloaded successfully!\n\n" + output_text
                 )
                 self.load_profiles()
                 self.test_all_pings()
             else:
-                error_msg = result.stderr if result.stderr else result.stdout
                 QMessageBox.warning(
                     self,
                     "Warning",
-                    f"Failed to reload profiles:\n{error_msg}"
+                    f"Failed to reload profiles:\n{error_text}"
                 )
         
-        except subprocess.TimeoutExpired:
-            QMessageBox.warning(
-                self,
-                "Timeout",
-                "The script took too long to execute."
-            )
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "Error",
                 f"Failed to run extract_dns.py:\n{str(e)}"
             )
+        finally:
+            # Re-enable the reload button
+            self.reload_button.setEnabled(True)
     
     def reset_to_dhcp(self):
         """Reset DNS settings to Automatic (DHCP)."""

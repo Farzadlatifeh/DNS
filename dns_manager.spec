@@ -30,6 +30,8 @@ a = Analysis(
         're',
         'pathlib',
         'urllib.request',
+        'importlib.util',
+        'io',
     ],
     hookspath=[],
     hooksconfig={},

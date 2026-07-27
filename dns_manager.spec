@@ -65,7 +65,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='DNS_Manager',
+    name='DNS_Shecan',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -78,5 +78,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Add your .ico file path here if you have one, e.g., icon='app_icon.ico'
+    icon='faveicon.ico',          # relative path, ensure file exists
 )

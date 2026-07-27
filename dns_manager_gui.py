@@ -527,18 +527,59 @@ class DNSManagerGUI(QMainWindow):
     def refresh_current_dns(self):
         """Refresh the current DNS status from the system."""
         try:
-            # Use a more reliable PowerShell command to get DNS servers
+            # Use PowerShell to get DNS servers for active interfaces (Ethernet and Wi-Fi)
+            # Priority: Check Ethernet first, then Wi-Fi
             ps_command = r'''
-            $dnsConfigs = Get-DnsClientServerAddress | Where-Object { $_.ServerAddresses -ne $null -and $_.ServerAddresses.Count -gt 0 }
-            $result = @()
-            foreach ($config in $dnsConfigs) {
-                $result += @{
-                    AddressFamily = $config.AddressFamily
-                    ServerAddresses = $config.ServerAddresses
-                }
+$ErrorActionPreference = "SilentlyContinue"
+
+# Get all network adapters with their operational status and DNS servers
+$adapters = Get-DnsClientServerAddress | Where-Object { $_.ServerAddresses -ne $null }
+
+# Define priority order for interface aliases (case-insensitive matching)
+$priorityInterfaces = @("Ethernet", "Wi-Fi")
+
+$selectedInterface = $null
+$ipv4Servers = @()
+$ipv6Servers = @()
+
+foreach ($interfaceName in $priorityInterfaces) {
+    # Find matching interface (case-insensitive)
+    $matchingAdapters = $adapters | Where-Object { 
+        $_.InterfaceAlias -like "*$interfaceName*" -and $_.ServerAddresses.Count -gt 0 
+    }
+    
+    if ($matchingAdapters) {
+        foreach ($adapter in $matchingAdapters) {
+            if ($adapter.AddressFamily -eq 2) {
+                # IPv4 (AddressFamily 2)
+                $ipv4Servers = $adapter.ServerAddresses
+            } elseif ($adapter.AddressFamily -eq 23) {
+                # IPv6 (AddressFamily 23)
+                $ipv6Servers = $adapter.ServerAddresses
             }
-            $result | ConvertTo-Json -Depth 3
-            '''
+        }
+        
+        # If we found at least one address family for this interface, use it
+        if ($ipv4Servers.Count -gt 0 -or $ipv6Servers.Count -gt 0) {
+            $selectedInterface = $interfaceName
+            break
+        }
+        
+        # Reset for next interface check
+        $ipv4Servers = @()
+        $ipv6Servers = @()
+    }
+}
+
+# Return result as JSON
+$result = @{
+    Interface = $selectedInterface
+    IPv4 = $ipv4Servers
+    IPv6 = $ipv6Servers
+}
+
+$result | ConvertTo-Json -Depth 3
+'''
             
             result = subprocess.run(
                 ['powershell', '-Command', ps_command],
@@ -552,43 +593,50 @@ class DNSManagerGUI(QMainWindow):
             if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout)
                 
-                ipv4_servers = []
-                ipv6_servers = []
+                ipv4_servers = data.get('IPv4', [])
+                ipv6_servers = data.get('IPv6', [])
+                interface_name = data.get('Interface', None)
                 
-                if isinstance(data, list):
-                    for entry in data:
-                        if isinstance(entry, dict):
-                            family = entry.get('AddressFamily', 0)
-                            servers = entry.get('ServerAddresses', [])
-                            if isinstance(servers, list):
-                                if family == 2:
-                                    ipv4_servers.extend([str(s) for s in servers])
-                                elif family == 23:
-                                    ipv6_servers.extend([str(s) for s in servers])
+                # Ensure they are lists
+                if not isinstance(ipv4_servers, list):
+                    ipv4_servers = [ipv4_servers] if ipv4_servers else []
+                if not isinstance(ipv6_servers, list):
+                    ipv6_servers = [ipv6_servers] if ipv6_servers else []
                 
-                if ipv4_servers:
-                    self.current_dns['ipv4'] = ', '.join(ipv4_servers[:2])
+                if interface_name:
+                    if ipv4_servers:
+                        self.current_dns['ipv4'] = ', '.join(ipv4_servers[:2])
+                    else:
+                        self.current_dns['ipv4'] = 'Not configured'
+                    
+                    if ipv6_servers:
+                        self.current_dns['ipv6'] = ', '.join(ipv6_servers[:2])
+                    else:
+                        self.current_dns['ipv6'] = 'Not configured'
+                    
+                    self.current_dns['interface'] = interface_name
                 else:
                     self.current_dns['ipv4'] = 'Automatic (DHCP)'
-                
-                if ipv6_servers:
-                    self.current_dns['ipv6'] = ', '.join(ipv6_servers[:2])
-                else:
                     self.current_dns['ipv6'] = 'Automatic (DHCP)'
+                    self.current_dns['interface'] = 'None'
             else:
                 stderr_msg = result.stderr.strip() if result.stderr else "Unknown error"
                 self.current_dns['ipv4'] = f'Error retrieving DNS: {stderr_msg}'
                 self.current_dns['ipv6'] = f'Error retrieving DNS: {stderr_msg}'
+                self.current_dns['interface'] = 'Error'
         
         except FileNotFoundError:
             self.current_dns['ipv4'] = 'Error: PowerShell not found (Windows only)'
             self.current_dns['ipv6'] = 'Error: PowerShell not found (Windows only)'
+            self.current_dns['interface'] = 'Error'
         except Exception as e:
             self.current_dns['ipv4'] = f'Error: {str(e)}'
             self.current_dns['ipv6'] = f'Error: {str(e)}'
+            self.current_dns['interface'] = 'Error'
         
-        self.ipv4_status_label.setText(f"IPv4 DNS: {self.current_dns['ipv4']}")
-        self.ipv6_status_label.setText(f"IPv6 DNS: {self.current_dns['ipv6']}")
+        interface_info = f" ({self.current_dns.get('interface', 'Unknown')})" if self.current_dns.get('interface') else ""
+        self.ipv4_status_label.setText(f"IPv4 DNS{interface_info}: {self.current_dns['ipv4']}")
+        self.ipv6_status_label.setText(f"IPv6 DNS{interface_info}: {self.current_dns['ipv6']}")
     
     def apply_dns_profile(self, profile: Dict[str, Any], dns_type: str):
         """Apply the selected DNS profile to the system."""

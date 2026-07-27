@@ -528,7 +528,7 @@ class DNSManagerGUI(QMainWindow):
         """Refresh the current DNS status from the system."""
         try:
             # Use a more reliable PowerShell command to get DNS servers
-            ps_command = '''
+            ps_command = r'''
             $dnsConfigs = Get-DnsClientServerAddress | Where-Object { $_.ServerAddresses -ne $null -and $_.ServerAddresses.Count -gt 0 }
             $result = @()
             foreach ($config in $dnsConfigs) {
@@ -545,7 +545,8 @@ class DNSManagerGUI(QMainWindow):
                 capture_output=True,
                 text=True,
                 timeout=10,
-                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
+                shell=False
             )
             
             if result.returncode == 0 and result.stdout.strip():
@@ -575,9 +576,13 @@ class DNSManagerGUI(QMainWindow):
                 else:
                     self.current_dns['ipv6'] = 'Automatic (DHCP)'
             else:
-                self.current_dns['ipv4'] = 'Automatic (DHCP)'
-                self.current_dns['ipv6'] = 'Automatic (DHCP)'
+                stderr_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                self.current_dns['ipv4'] = f'Error retrieving DNS: {stderr_msg}'
+                self.current_dns['ipv6'] = f'Error retrieving DNS: {stderr_msg}'
         
+        except FileNotFoundError:
+            self.current_dns['ipv4'] = 'Error: PowerShell not found (Windows only)'
+            self.current_dns['ipv6'] = 'Error: PowerShell not found (Windows only)'
         except Exception as e:
             self.current_dns['ipv4'] = f'Error: {str(e)}'
             self.current_dns['ipv6'] = f'Error: {str(e)}'

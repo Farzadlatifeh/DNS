@@ -528,46 +528,53 @@ class DNSManagerGUI(QMainWindow):
         """Refresh the current DNS status from the system."""
         try:
             # Use PowerShell to get DNS servers for active interfaces (Ethernet and Wi-Fi)
-            # Priority: Check Ethernet first, then Wi-Fi
+            # Priority: Check which interface is actually UP/CONNECTED first
             ps_command = r'''
 $ErrorActionPreference = "SilentlyContinue"
 
-# Get all network adapters with their operational status and DNS servers
-$adapters = Get-DnsClientServerAddress | Where-Object { $_.ServerAddresses -ne $null }
+# Get all network adapters with their operational status
+$netAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
 
 # Define priority order for interface aliases (case-insensitive matching)
-$priorityInterfaces = @("Ethernet", "Wi-Fi")
+$priorityInterfaces = @("Wi-Fi", "Ethernet")
 
 $selectedInterface = $null
 $ipv4Servers = @()
 $ipv6Servers = @()
 
 foreach ($interfaceName in $priorityInterfaces) {
-    # Find matching interface (case-insensitive)
-    $matchingAdapters = $adapters | Where-Object { 
-        $_.InterfaceAlias -like "*$interfaceName*" -and $_.ServerAddresses.Count -gt 0 
-    }
+    # Find matching active interface (case-insensitive)
+    $matchingAdapter = $netAdapters | Where-Object { 
+        $_.Name -like "*$interfaceName*" -or $_.InterfaceDescription -like "*$interfaceName*"
+    } | Select-Object -First 1
     
-    if ($matchingAdapters) {
-        foreach ($adapter in $matchingAdapters) {
-            if ($adapter.AddressFamily -eq 2) {
-                # IPv4 (AddressFamily 2)
-                $ipv4Servers = $adapter.ServerAddresses
-            } elseif ($adapter.AddressFamily -eq 23) {
-                # IPv6 (AddressFamily 23)
-                $ipv6Servers = $adapter.ServerAddresses
+    if ($matchingAdapter) {
+        $adapterName = $matchingAdapter.Name
+        
+        # Get DNS servers for this specific adapter
+        $dnsServers = Get-DnsClientServerAddress -InterfaceAlias $adapterName -ErrorAction SilentlyContinue
+        
+        if ($dnsServers) {
+            foreach ($dns in $dnsServers) {
+                if ($dns.AddressFamily -eq 2 -and $dns.ServerAddresses.Count -gt 0) {
+                    # IPv4 (AddressFamily 2)
+                    $ipv4Servers = $dns.ServerAddresses
+                } elseif ($dns.AddressFamily -eq 23 -and $dns.ServerAddresses.Count -gt 0) {
+                    # IPv6 (AddressFamily 23)
+                    $ipv6Servers = $dns.ServerAddresses
+                }
             }
+            
+            # If we found at least one address family for this interface, use it
+            if ($ipv4Servers.Count -gt 0 -or $ipv6Servers.Count -gt 0) {
+                $selectedInterface = $adapterName
+                break
+            }
+            
+            # Reset for next interface check
+            $ipv4Servers = @()
+            $ipv6Servers = @()
         }
-        
-        # If we found at least one address family for this interface, use it
-        if ($ipv4Servers.Count -gt 0 -or $ipv6Servers.Count -gt 0) {
-            $selectedInterface = $interfaceName
-            break
-        }
-        
-        # Reset for next interface check
-        $ipv4Servers = @()
-        $ipv6Servers = @()
     }
 }
 

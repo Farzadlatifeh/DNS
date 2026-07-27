@@ -14,7 +14,7 @@
     },
     {
       "profile_number": 3,
-      "profile_name": "CAPNIC",
+      "profile_name": "CloudflareAPNIC",
       "primary": "1.1.1.1",
       "secondary": "1.0.0.1"
     },
@@ -74,7 +74,7 @@
     },
     {
       "profile_number": 13,
-      "profile_name": "FW",
+      "profile_name": "FreenomWorld",
       "primary": "80.80.80.80",
       "secondary": "80.80.81.81"
     },
@@ -86,13 +86,13 @@
     },
     {
       "profile_number": 15,
-      "profile_name": "HE",
+      "profile_name": "HurricaneElectric",
       "primary": "74.82.42.42",
       "secondary": "216.66.22.2"
     },
     {
       "profile_number": 16,
-      "profile_name": "NTT",
+      "profile_name": "NipponTelegraphandTelephone(NTT)",
       "primary": "129.250.35.250",
       "secondary": "129.250.35.251"
     },
@@ -112,7 +112,7 @@
     },
     {
       "profile_number": 2,
-      "profile_name": "CAPNIC",
+      "profile_name": "CloudflareAPNIC",
       "primary": "2606:4700:4700::1111",
       "secondary": "2606:4700:4700::1001"
     },
@@ -184,13 +184,13 @@
     },
     {
       "profile_number": 14,
-      "profile_name": "HE",
+      "profile_name": "HurricaneElectric",
       "primary": "2001:470:20::2",
       "secondary": "2001:470:0:90::2"
     },
     {
       "profile_number": 15,
-      "profile_name": "NTT",
+      "profile_name": "NipponTelegraphandTelephone(NTT)",
       "primary": "2001:418:3ff::53",
       "secondary": "2001:418:3ff::1:53"
     },
@@ -210,7 +210,7 @@
     },
     {
       "profile_number": 2,
-      "profile_name": "CAPNIC",
+      "profile_name": "CloudflareAPNIC64",
       "primary": "2606:4700:4700::64",
       "secondary": "2606:4700:4700::6400"
     },

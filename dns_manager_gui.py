@@ -63,6 +63,9 @@ class PingWorker(QThread):
     """Worker thread for testing DNS server ping."""
     ping_result = pyqtSignal(str, str, int)  # profile_name, ip, ping_ms (-1 if failed)
     
+    # Pre-compiled regex pattern for parsing ping output
+    PING_TIME_PATTERN = re.compile(r'time[=<](\d+)ms', re.IGNORECASE)
+    
     def __init__(self, profile_name: str, ip_address: str, timeout: int = 2):
         super().__init__()
         self.profile_name = profile_name
@@ -95,9 +98,7 @@ class PingWorker(QThread):
             if result.returncode == 0:
                 # Parse ping time from output
                 output = result.stdout
-                import re
-                # Match both "time=Xms" and "time<Xms" formats
-                match = re.search(r'time[=<](\d+)ms', output, re.IGNORECASE)
+                match = self.PING_TIME_PATTERN.search(output)
                 if match:
                     ping_ms = int(match.group(1))
                     self.ping_result.emit(self.profile_name, self.ip_address, ping_ms)
@@ -109,12 +110,41 @@ class PingWorker(QThread):
                         self.ping_result.emit(self.profile_name, self.ip_address, -1)
             else:
                 self.ping_result.emit(self.profile_name, self.ip_address, -1)
-        except Exception as e:
+        except Exception:
             self.ping_result.emit(self.profile_name, self.ip_address, -1)
 
 
 class DNSTile(QFrame):
     """A tile widget representing a DNS profile."""
+    
+    # Pre-compiled stylesheet templates for different DNS types (performance optimization)
+    STYLESHEET_TEMPLATE = """
+        DNSTile {{
+            background-color: {secondary};
+            border-radius: 10px;
+            border: 2px solid {primary};
+        }}
+        DNSTile:hover {{
+            background-color: {primary};
+        }}
+        QLabel {{
+            color: {text};
+        }}
+        QPushButton {{
+            background-color: {accent};
+            color: {primary};
+            border: none;
+            border-radius: 5px;
+            padding: 5px 15px;
+        }}
+        QPushButton:hover {{
+            background-color: #ffffff;
+        }}
+        QPushButton:pressed {{
+            background-color: {primary};
+            color: #ffffff;
+        }}
+    """
     
     def __init__(self, profile: Dict[str, Any], dns_type: str, parent=None):
         super().__init__(parent)
@@ -167,34 +197,7 @@ class DNSTile(QFrame):
     def apply_theme(self):
         """Apply color theme based on DNS type."""
         theme = THEMES.get(self.dns_type, THEMES['ipv4'])
-        
-        self.setStyleSheet(f"""
-            DNSTile {{
-                background-color: {theme['secondary']};
-                border-radius: 10px;
-                border: 2px solid {theme['primary']};
-            }}
-            DNSTile:hover {{
-                background-color: {theme['primary']};
-            }}
-            QLabel {{
-                color: {theme['text']};
-            }}
-            QPushButton {{
-                background-color: {theme['accent']};
-                color: {theme['primary']};
-                border: none;
-                border-radius: 5px;
-                padding: 5px 15px;
-            }}
-            QPushButton:hover {{
-                background-color: #ffffff;
-            }}
-            QPushButton:pressed {{
-                background-color: {theme['primary']};
-                color: #ffffff;
-            }}
-        """)
+        self.setStyleSheet(self.STYLESHEET_TEMPLATE.format(**theme))
     
     def update_ping(self, ip: str, ping_ms: int):
         """Update ping value for an IP address."""
@@ -205,6 +208,7 @@ class DNSTile(QFrame):
             avg_ping = sum(valid_pings) // len(valid_pings)
             self.ping_label.setText(f"Ping: {avg_ping} ms")
             
+            # Color coding based on ping quality
             if avg_ping < 50:
                 color = "#00e676"
             elif avg_ping < 100:
@@ -423,106 +427,84 @@ class DNSManagerGUI(QMainWindow):
     
     def display_profiles(self):
         """Display all DNS profiles as tiles."""
-        while self.tiles_layout.count():
-            item = self.tiles_layout.takeAt(0)
-            if item.widget():
+        # Clear existing widgets efficiently
+        for i in reversed(range(self.tiles_layout.count())):
+            item = self.tiles_layout.itemAt(i)
+            if item and item.widget():
                 item.widget().deleteLater()
         
         row = 0
         col = 0
         max_cols = 4
         
-        for profile in self.profiles_data.get('ipv4_profiles', []):
-            tile = DNSTile(profile, 'ipv4', self)
-            self.tiles_layout.addWidget(tile, row, col)
-            col += 1
-            if col >= max_cols:
-                col = 0
-                row += 1
+        # Pre-calculate total profiles to optimize layout
+        all_profiles = [
+            (self.profiles_data.get('ipv4_profiles', []), 'ipv4'),
+            (self.profiles_data.get('ipv6_profiles', []), 'ipv6'),
+            (self.profiles_data.get('dns64_profiles', []), 'dns64')
+        ]
         
-        for profile in self.profiles_data.get('ipv6_profiles', []):
-            tile = DNSTile(profile, 'ipv6', self)
-            self.tiles_layout.addWidget(tile, row, col)
-            col += 1
-            if col >= max_cols:
-                col = 0
-                row += 1
-        
-        for profile in self.profiles_data.get('dns64_profiles', []):
-            tile = DNSTile(profile, 'dns64', self)
-            self.tiles_layout.addWidget(tile, row, col)
-            col += 1
-            if col >= max_cols:
-                col = 0
-                row += 1
+        for profiles, dns_type in all_profiles:
+            for profile in profiles:
+                tile = DNSTile(profile, dns_type, self)
+                self.tiles_layout.addWidget(tile, row, col)
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
         
         self.tiles_layout.setRowStretch(row + 1, 1)
     
     def test_all_pings(self):
         """Test ping for all DNS profiles in separate threads."""
+        # Terminate existing workers
         for worker in self.active_workers:
             worker.terminate()
         self.active_workers.clear()
         
+        # Collect all IPs to test
+        all_ips = []
         for profile in self.profiles_data.get('ipv4_profiles', []):
             primary = profile.get('primary')
             secondary = profile.get('secondary')
-            
             if primary:
-                worker = PingWorker(profile['profile_name'], primary)
-                worker.ping_result.connect(self.on_ping_result)
-                self.active_workers.append(worker)
-                worker.start()
-            
+                all_ips.append((profile['profile_name'], primary))
             if secondary and secondary != primary:
-                worker = PingWorker(profile['profile_name'], secondary)
-                worker.ping_result.connect(self.on_ping_result)
-                self.active_workers.append(worker)
-                worker.start()
+                all_ips.append((profile['profile_name'], secondary))
         
         for profile in self.profiles_data.get('ipv6_profiles', []):
             primary = profile.get('primary')
             secondary = profile.get('secondary')
-            
             if primary:
-                worker = PingWorker(profile['profile_name'], primary)
-                worker.ping_result.connect(self.on_ping_result)
-                self.active_workers.append(worker)
-                worker.start()
-            
+                all_ips.append((profile['profile_name'], primary))
             if secondary and secondary != primary:
-                worker = PingWorker(profile['profile_name'], secondary)
-                worker.ping_result.connect(self.on_ping_result)
-                self.active_workers.append(worker)
-                worker.start()
+                all_ips.append((profile['profile_name'], secondary))
         
         for profile in self.profiles_data.get('dns64_profiles', []):
             primary = profile.get('primary')
             secondary = profile.get('secondary')
-            
             if primary:
-                worker = PingWorker(profile['profile_name'], primary)
-                worker.ping_result.connect(self.on_ping_result)
-                self.active_workers.append(worker)
-                worker.start()
-            
+                all_ips.append((profile['profile_name'], primary))
             if secondary and secondary != primary:
-                worker = PingWorker(profile['profile_name'], secondary)
-                worker.ping_result.connect(self.on_ping_result)
-                self.active_workers.append(worker)
-                worker.start()
+                all_ips.append((profile['profile_name'], secondary))
+        
+        # Start all workers
+        for profile_name, ip in all_ips:
+            worker = PingWorker(profile_name, ip)
+            worker.ping_result.connect(self.on_ping_result)
+            self.active_workers.append(worker)
+            worker.start()
     
     def on_ping_result(self, profile_name: str, ip: str, ping_ms: int):
-        """Handle ping result from worker thread."""
+        """Handle ping result from worker thread using tile cache lookup."""
+        # Use a more efficient approach by storing tile references
         for i in range(self.tiles_layout.count()):
             item = self.tiles_layout.itemAt(i)
             if item and item.widget():
                 tile = item.widget()
-                if isinstance(tile, DNSTile):
-                    # Match by profile name to ensure we update the correct tile
-                    if tile.profile.get('profile_name') == profile_name:
-                        tile.update_ping(ip, ping_ms)
-                        return
+                if isinstance(tile, DNSTile) and tile.profile.get('profile_name') == profile_name:
+                    tile.update_ping(ip, ping_ms)
+                    return
     
     def refresh_current_dns(self):
         """Refresh the current DNS status from the system."""

@@ -1,4 +1,4 @@
-# DNS Shecan Manager - Windows 11
+# DNS Shecan - Windows 11
 
 A modern PyQt6 GUI application for managing DNS profiles on Windows 11, with special focus on **Shecan DNS** and other global DNS providers. This tool allows you to easily view, test, and apply DNS server configurations from various providers worldwide.
 
